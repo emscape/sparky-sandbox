@@ -1,0 +1,32 @@
+{
+  "_comment": "WARNING: Current app/main.py is designed as a long-running aiohttp server, NOT serverless functions. This configuration will NOT work without refactoring to FastAPI with serverless handlers. Use Render/Railway/Fly.io for current architecture.",
+  "version": 2,
+  "builds": [
+    {
+      "src": "app/main.py",
+      "use": "@vercel/python",
+      "_note": "This build will fail - aiohttp is not compatible with Vercel serverless"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
+    },
+    {
+      "src": "/favicon.ico",
+      "dest": "/static/images/favicon.ico"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "app/main.py",
+      "_note": "This routing assumes serverless function, but main.py is a long-running server"
+    }
+  ],
+  "env": {
+    "PYTHON_VERSION": "3.11"
+  },
+  "functions": {
+    "_comment": "To deploy on Vercel, refactor app/main.py to use FastAPI with individual route handlers as serverless functions"
+  }
+}

@@ -1,0 +1,122 @@
+# Root .gitignore - expanded for project
+# Includes common OS, editor, Python, Node, Docker, Supabase, and secret patterns
+
+# Node
+node_modules/
+js-utils/
+dist/
+build/
+out/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+venv/
+env/
+.venv/
+.venv/*
+*.egg-info/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+build/
+dist/
+.eggs/
+parts/
+var/
+*.pytest_cache
+.mypy_cache/
+
+# Supabase local runtime
+.supabase
+.supabase/local
+.supabase/.anon
+.branches
+.temp
+
+# Databases / dumps
+*.dump
+*.sql
+db/*.db
+db/*.sqlite3
+postgres-data/
+pgdata/
+
+# Environment / secrets
+.env*
+.env.keys
+.env.secrets
+secrets.*
+*.secret
+*.pem
+*.key
+*.crt
+
+# IDEs / editors
+.vscode/
+*.code-workspace
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+desktop.ini
+Icon?
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.log.*
+
+# Swap / temporary
+*~
+*.swp
+*.swo
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.*.yml
+
+# Cache / coverage
+.cache/
+.history/
+.coverage
+coverage.xml
+htmlcov/
+
+# Misc
+.ropeproject
+
+# Personal/memory content - NEVER track these
+.memory-bank/
+memory-drops/
+chat-history/
+
+# Version files
+=*
+
+# Supabase config with potentially sensitive data
+supabase/config.toml
+
+# Keep example envs tracked
+!.env.example
+web-export/

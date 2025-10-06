@@ -1,0 +1,1 @@
+"""Sparky AI Assistant Application Package"""

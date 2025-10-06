@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""
+Main application file for Sparky AI Assistant.
+Consolidated web server with Google OAuth authentication.
+"""
+
+import asyncio
+import json
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+
+from aiohttp import web
+from aiohttp_session import setup as setup_session
+from aiohttp_session.cookie_storage import EncryptedCookieStorage
+from openai import AsyncOpenAI
+
+from config import config
+from app.auth.google import GoogleOAuthHandler
+from app.chat.routes import ChatHandler
+from app.memory.utils import MemoryManager
+
+
+class SparkyApp:
+    """Main Sparky application class."""
+
+    def __init__(self):
+        """Initialize the application."""
+        self.openai_client = AsyncOpenAI(api_key=config.openai_api_key)
+        self.oauth_handler = GoogleOAuthHandler()
+        self.chat_handler = ChatHandler(self.openai_client)
+        self.memory_manager = MemoryManager()
+
+    def require_auth(self, handler):
+        """Decorator to require authentication for routes."""
+        async def wrapper(request):
+            user = await self.get_current_user(request)
+            if not user:
+                return web.json_response({'error': 'Authentication required'}, status=401)
+            request['user'] = user
+            return await handler(request)
+        return wrapper
+
+    async def get_current_user(self, request) -> Optional[Dict]:
+        """Get current user from JWT token."""
+        try:
+            from aiohttp_session import get_session
+            session = await get_session(request)
+            token = session.get('jwt_token')
+            
+            if not token:
+                return None
+                
+            payload = self.oauth_handler.verify_jwt_token(token)
+            return payload
+        except:
+            return None
+
+    async def handle_login_redirect(self, request):
+        """Redirect to Google OAuth."""
+        auth_url = self.oauth_handler.get_auth_url()
+        return web.Response(status=302, headers={'Location': auth_url})
+
+    async def handle_oauth_callback(self, request):
+        """Handle OAuth callback from Google."""
+        try:
+            code = request.query.get('code')
+            if not code:
+                return web.Response(text="Authorization failed", status=400)
+
+            # Process OAuth callback
+            user = await self.oauth_handler.process_callback(code)
+            if not user:
+                return web.Response(text="Authentication failed", status=500)
+
+            # Create JWT token and set session
+            jwt_token = self.oauth_handler.create_jwt_token(user)
+
+            from aiohttp_session import get_session
+            session = await get_session(request)
+            session['jwt_token'] = jwt_token
+            session['user_id'] = user['id']
+
+            # Redirect to chat interface
+            return web.Response(status=302, headers={'Location': '/chat'})
+
+        except Exception as e:
+            print(f"OAuth callback error: {e}")
+            return web.Response(text="Authentication failed", status=500)
+
+    async def handle_logout(self, request):
+        """Handle logout request."""
+        try:
+            from aiohttp_session import get_session
+            session = await get_session(request)
+            session.clear()
+            return web.json_response({'success': True})
+        except Exception as e:
+            print(f"Logout error: {e}")
+            return web.json_response({'error': 'Logout failed'}, status=500)
+
+    async def handle_auth_status(self, request):
+        """Check authentication status."""
+        try:
+            user = await self.get_current_user(request)
+            if user:
+                return web.json_response({
+                    'authenticated': True,
+                    'user': {
+                        'id': user['user_id'],
+                        'email': user['email'],
+                        'name': user['name']
+                    }
+                })
+            else:
+                return web.json_response({'authenticated': False})
+        except Exception as e:
+            print(f"Auth status error: {e}")
+            return web.json_response({'authenticated': False})
+
+    async def serve_login(self, request):
+        """Serve login page."""
+        return web.FileResponse('templates/login.html')
+
+    async def serve_chat(self, request):
+        """Serve chat page."""
+        user = await self.get_current_user(request)
+        if not user:
+            return web.Response(status=302, headers={'Location': '/'})
+        return web.FileResponse('templates/chat.html')
+
+    async def create_app(self):
+        """Create and configure the web application."""
+        app = web.Application()
+
+        # Setup session middleware
+        secret_key = config.jwt_secret.encode('utf-8')[:32]
+        if len(secret_key) < 32:
+            secret_key = (secret_key * (32 // len(secret_key) + 1))[:32]
+        
+        setup_session(app, EncryptedCookieStorage(secret_key))
+
+        # Public routes
+        app.router.add_get('/', self.serve_login)
+        app.router.add_get('/login', self.serve_login)
+        app.router.add_get('/chat', self.serve_chat)
+
+        # Authentication routes (no auth required)
+        app.router.add_get('/api/auth/google', self.handle_login_redirect)
+        app.router.add_get('/api/auth/google/callback', self.handle_oauth_callback)
+        app.router.add_post('/api/logout', self.handle_logout)
+        app.router.add_get('/api/auth/status', self.handle_auth_status)
+
+        # Protected API routes (require authentication)
+        app.router.add_post('/api/chat', self.require_auth(self.chat_handler.handle_chat))
+        app.router.add_post('/api/chat/clear', self.require_auth(self.chat_handler.handle_clear))
+        app.router.add_post('/api/memory/search', self.require_auth(self.memory_manager.handle_search))
+
+        # Serve static files
+        app.router.add_static('/static/', path=Path('./static'), name='static')
+
+        return app
+
+
+def create_app():
+    """Factory function to create the app (for Vercel)."""
+    sparky = SparkyApp()
+    return asyncio.run(sparky.create_app())
+
+
+async def main():
+    """Main function for local development."""
+    sparky = SparkyApp()
+    app = await sparky.create_app()
+    
+    print("=" * 80)
+    print("✨ SPARKY AI ASSISTANT")
+    print("=" * 80)
+    print("\nStarting server on http://localhost:8080")
+    print("Open your browser and navigate to: http://localhost:8080")
+    print("\nPress Ctrl+C to stop the server.")
+    print("=" * 80)
+    print()
+    
+    web.run_app(app, host='localhost', port=8080)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
