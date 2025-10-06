@@ -169,20 +169,27 @@ def create_app():
 
 
 async def main():
-    """Main function for local development."""
+    """Main function for local development and deployment."""
+    import os
+    
     sparky = SparkyApp()
     app = await sparky.create_app()
+    
+    # Get host and port from environment (for deployment) or use defaults (for local)
+    host = os.getenv('HOST', '0.0.0.0')  # Railway/Render need 0.0.0.0
+    port = int(os.getenv('PORT', 8080))  # Railway provides PORT env var
     
     print("=" * 80)
     print("✨ SPARKY AI ASSISTANT")
     print("=" * 80)
-    print("\nStarting server on http://localhost:8080")
-    print("Open your browser and navigate to: http://localhost:8080")
+    print(f"\nStarting server on {host}:{port}")
+    if host == 'localhost':
+        print("Open your browser and navigate to: http://localhost:8080")
     print("\nPress Ctrl+C to stop the server.")
     print("=" * 80)
     print()
     
-    web.run_app(app, host='localhost', port=8080)
+    web.run_app(app, host=host, port=port)
 
 
 if __name__ == "__main__":
