@@ -57,12 +57,18 @@ class SparkyApp:
             return None
 
     async def handle_login_redirect(self, request):
-        """Redirect to Google OAuth."""
+        """Redirect to Google OAuth or show config error."""
+        if not config.oauth_enabled:
+            return web.Response(text="OAuth not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.", status=503)
+        
         auth_url = self.oauth_handler.get_auth_url()
         return web.Response(status=302, headers={'Location': auth_url})
 
     async def handle_oauth_callback(self, request):
         """Handle OAuth callback from Google."""
+        if not config.oauth_enabled:
+            return web.Response(text="OAuth not configured", status=503)
+            
         try:
             code = request.query.get('code')
             if not code:
