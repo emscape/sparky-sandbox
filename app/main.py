@@ -146,10 +146,15 @@ class SparkyApp:
         
         setup_session(app, EncryptedCookieStorage(secret_key))
 
+        # Health check route (for platforms like Railway)
+        async def health(_request):
+            return web.json_response({"status": "ok"})
+
         # Public routes
         app.router.add_get('/', self.serve_login)
         app.router.add_get('/login', self.serve_login)
         app.router.add_get('/chat', self.serve_chat)
+        app.router.add_get('/health', health)
 
         # Authentication routes (no auth required)
         app.router.add_get('/api/auth/google', self.handle_login_redirect)
@@ -174,17 +179,14 @@ def create_app():
     return asyncio.run(sparky.create_app())
 
 
-async def main():
-    """Main function for local development and deployment."""
+def main():
+    """Main entrypoint for local development and deployment (synchronous)."""
     import os
-    
-    sparky = SparkyApp()
-    app = await sparky.create_app()
-    
+
     # Get host and port from environment (for deployment) or use defaults (for local)
     host = os.getenv('HOST', '0.0.0.0')  # Railway/Render need 0.0.0.0
     port = int(os.getenv('PORT', 8080))  # Railway provides PORT env var
-    
+
     print("=" * 80)
     print("✨ SPARKY AI ASSISTANT")
     print("=" * 80)
@@ -194,9 +196,11 @@ async def main():
     print("\nPress Ctrl+C to stop the server.")
     print("=" * 80)
     print()
-    
-    web.run_app(app, host=host, port=port)
+
+    # Pass coroutine to aiohttp; it will manage the event loop internally
+    sparky = SparkyApp()
+    web.run_app(sparky.create_app(), host=host, port=port)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

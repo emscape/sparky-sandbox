@@ -4,11 +4,18 @@
 import asyncio
 import tempfile
 import os
+import sys
 from pathlib import Path
+import pytest
+
+# Add scripts directory to path
+scripts_dir = Path(__file__).parent.parent / "scripts"
+sys.path.insert(0, str(scripts_dir))
 
 from load_memory_batch import BatchMemoryLoader
 
 
+@pytest.mark.asyncio
 async def test_batch_loading():
     """Test the batch loading functionality with sample content."""
     print("🧪 Testing Batch Memory Loading")

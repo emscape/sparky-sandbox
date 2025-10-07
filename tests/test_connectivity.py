@@ -3,12 +3,20 @@
 
 import asyncio
 import sys
+from pathlib import Path
+import pytest
+
+# Add scripts directory to path
+scripts_dir = Path(__file__).parent.parent / "scripts"
+sys.path.insert(0, str(scripts_dir))
+
 from config import config
-from helpers import get_embedding
+from utils import get_embedding
 from supabase import create_client, Client
 from openai import AsyncOpenAI
 
 
+@pytest.mark.asyncio
 async def test_openai_connectivity():
     """Test OpenAI API connectivity."""
     print("Testing OpenAI API connectivity...")
@@ -32,27 +40,22 @@ async def test_openai_connectivity():
 
 def test_supabase_connectivity():
     """Test Supabase database connectivity."""
-    print("Testing Supabase database connectivity...")
+    print("Testing Supabase connectivity...")
     
     try:
-        # Create Supabase client
         supabase: Client = create_client(config.supabase_url, config.supabase_key)
         
-        # Test basic connectivity with a simple query
-        response = supabase.table(config.memory_table).select("count", count="exact").limit(1).execute()
+        # Test a simple query
+        response = supabase.table(config.memory_table).select("count", count="exact").execute()
         
-        print(f"✅ Database connection successful")
-        print(f"✅ Memory table '{config.memory_table}' accessible")
-        
-        # Check if table has data
-        if hasattr(response, 'count') and response.count is not None:
-            print(f"✅ Table contains {response.count} records")
-        
-        return True
-        
+        if hasattr(response, 'count'):
+            print(f"✅ Supabase connected - {response.count} records in memory table")
+        else:
+            print("✅ Supabase connected - basic query successful")
+            
     except Exception as e:
-        print(f"❌ Database connectivity test failed: {e}")
-        return False
+        print(f"❌ Supabase connection failed: {e}")
+        assert False, f"Supabase connectivity test failed: {e}"
 
 
 async def main():

@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 from supabase import create_client
 from aiohttp import web
 
-from ..config import config
+from config import config
 
 
 async def get_embedding(text: str, client: AsyncOpenAI, model: str = "text-embedding-3-small") -> List[float]:

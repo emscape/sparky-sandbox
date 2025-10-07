@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Comprehensive test suite for the file watcher functionality."""
+"""Test file watcher functionality for the AI Memory System."""
 
 import asyncio
 import json
@@ -7,13 +7,19 @@ import os
 import shutil
 import tempfile
 import time
+import warnings
+import pytest
 from pathlib import Path
 from typing import Dict, Any
 import unittest
 from unittest.mock import patch, AsyncMock
 
-from watch_and_load import MemoryWatcher, MemoryFileHandler
-from load_memory_batch import BatchMemoryLoader
+# Suppress Supabase deprecation warnings in tests
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="supabase")
+
+# Now use proper package imports
+from memory.watcher import MemoryWatcher, MemoryFileHandler
+from memory.loader import BatchMemoryLoader
 
 
 class TestFileWatcher(unittest.TestCase):
@@ -143,6 +149,7 @@ class TestFileWatcher(unittest.TestCase):
         print("   ✅ File hash changes detected correctly")
     
     @patch('watch_and_load.BatchMemoryLoader')
+    @pytest.mark.asyncio
     async def test_file_processing_async(self, mock_loader_class):
         """Test asynchronous file processing."""
         print("\n⚡ Testing async file processing...")
@@ -241,6 +248,7 @@ class TestWatcherIntegration(unittest.TestCase):
         print("🗑️  Integration test cleanup complete")
     
     @patch('watch_and_load.BatchMemoryLoader')
+    @pytest.mark.asyncio
     async def test_existing_files_processing(self, mock_loader_class):
         """Test processing of existing files on startup."""
         print("\n📁 Testing existing files processing...")

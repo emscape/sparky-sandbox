@@ -22,10 +22,20 @@ class Config:
         self.embedding_dimensions = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
         self.memory_table = "structured_memory"
 
-        # Google OAuth settings
-        self.google_client_id = self._get_required_env("GOOGLE_CLIENT_ID")
-        self.google_client_secret = self._get_required_env("GOOGLE_CLIENT_SECRET")
+        # Google OAuth settings (optional for deployment, required for auth)
+        self.google_client_id = os.getenv("GOOGLE_CLIENT_ID", "not-configured")
+        self.google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "not-configured")
         self.oauth_redirect_uri = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8080/api/auth/google/callback")
+        
+        # Allow forced disable of OAuth (for initial Railway deploy without domain)
+        disable_oauth_flag = os.getenv("DISABLE_OAUTH", "false").lower() in {"1", "true", "yes", "on"}
+
+        # Check if OAuth is properly configured
+        oauth_configured = (
+            self.google_client_id != "not-configured" and 
+            self.google_client_secret != "not-configured"
+        )
+        self.oauth_enabled = (not disable_oauth_flag) and oauth_configured
         
         # JWT settings for session management
         self.jwt_secret = self._get_session_secret()

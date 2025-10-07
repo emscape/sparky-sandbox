@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Test script to demonstrate the enhanced AI memory system."""
+"""Test core memory functionality for the AI Memory System."""
 
 import asyncio
+import tempfile
 import sys
+from pathlib import Path
+import pytest
+
+# Add scripts directory to path
+scripts_dir = Path(__file__).parent.parent / "scripts"
+sys.path.insert(0, str(scripts_dir))
+
 from inject_memory import MemoryInjector
 from retrieve_similar import MemoryRetriever
 
 
+@pytest.mark.asyncio
 async def test_memory_system():
     """Test the enhanced memory system with sample data."""
     print("🧪 Testing Enhanced AI Memory System")
