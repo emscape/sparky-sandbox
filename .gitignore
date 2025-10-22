@@ -117,6 +117,12 @@ chat-history/
 # Supabase config with potentially sensitive data
 supabase/config.toml
 
+# Gmail credentials and tokens
+gmail_credentials.json
+gmail_token.json
+*_credentials.json
+*_token.json
+
 # Keep example envs tracked
 !.env.example
 web-export/
