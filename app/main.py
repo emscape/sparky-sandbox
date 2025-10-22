@@ -16,9 +16,9 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from openai import AsyncOpenAI
 
 from config import config
-from app.auth.google import GoogleOAuthHandler
-from app.chat.routes import ChatHandler
-from app.memory.utils import MemoryManager
+from .auth.google import GoogleOAuthHandler
+from .chat.routes import ChatHandler
+from .memory.utils import MemoryManager
 
 
 class SparkyApp:
