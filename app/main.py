@@ -44,19 +44,21 @@ class SparkyApp:
         return wrapper
 
     async def get_current_user(self, request) -> Optional[Dict]:
-        """Get current user from Supabase session."""
+        """Get current user from Supabase session, with debug logging."""
         try:
             from aiohttp_session import get_session
-
             session = await get_session(request)
+            print(f"[DEBUG] Session contents: {dict(session)}")
             access_token = session.get("supabase_access_token")
-
+            print(f"[DEBUG] Access token: {access_token}")
             if not access_token:
+                print("[DEBUG] No access token found in session.")
                 return None
-
             user = self.supabase_auth.get_user_from_session(access_token)
+            print(f"[DEBUG] User from session: {user}")
             return user
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG] Exception in get_current_user: {e}")
             return None
 
     async def handle_login_redirect(self, request):
@@ -75,17 +77,21 @@ class SparkyApp:
             return web.Response(text=f"Auth error: {e}", status=500)
 
     async def handle_oauth_callback(self, request):
-        """Handle OAuth callback from Supabase auth."""
+        """Handle OAuth callback from Supabase auth, with debug logging."""
         if not config.oauth_enabled:
             return web.Response(text="OAuth not configured", status=503)
 
         try:
             code = request.query.get("code")
+            print(f"[DEBUG] OAuth callback code: {code}")
             if not code:
+                print("[DEBUG] Missing code in OAuth callback.")
                 return web.Response(text="Authentication failed: Missing code", status=400)
 
             session_data = self.supabase_auth.exchange_code_for_session(code)
+            print(f"[DEBUG] Session data from exchange: {session_data}")
             if not session_data:
+                print("[DEBUG] Invalid session data after code exchange.")
                 return web.Response(text="Authentication failed: Invalid session", status=500)
 
             access_token = session_data["access_token"]
@@ -99,13 +105,20 @@ class SparkyApp:
             session["supabase_access_token"] = access_token
             session["supabase_refresh_token"] = refresh_token
             session["user_id"] = user["id"]
+            print(f"[DEBUG] Session after storing tokens: {dict(session)}")
 
             # Redirect to chat interface
             return web.Response(status=302, headers={"Location": "/chat"})
 
         except Exception as e:
-            print(f"OAuth callback error: {e}")
+            print(f"[DEBUG] OAuth callback error: {e}")
             return web.Response(text="Authentication failed", status=500)
+    async def handle_session_debug(self, request):
+        """Debug endpoint to inspect session state after login."""
+        from aiohttp_session import get_session
+        session = await get_session(request)
+        print(f"[DEBUG] /api/session-debug session: {dict(session)}")
+        return web.json_response({"session": dict(session)})
 
     async def handle_logout(self, request):
         """Handle logout request."""
@@ -177,6 +190,9 @@ class SparkyApp:
         app.router.add_get("/login", self.serve_login)
         app.router.add_get("/chat", self.serve_chat)
         app.router.add_get("/health", health)
+
+        # Debug route for session inspection
+        app.router.add_get("/api/session-debug", self.handle_session_debug)
 
         # Authentication routes (no auth required)
         app.router.add_get("/api/auth/google", self.handle_login_redirect)

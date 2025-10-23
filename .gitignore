@@ -111,6 +111,13 @@ htmlcov/
 memory-drops/
 chat-history/
 
+# AI coding assistant guidelines and Copilot instructions (do not commit)
+.github/ai-coding-assistant-guidelines-main/
+.github/copilot-instructions.md
+
+# AI coding assistant guidelines (do not commit)
+.github/ai-coding-assistant-guidelines-main/
+
 # Version files
 =*
 
