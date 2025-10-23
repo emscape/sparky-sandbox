@@ -174,12 +174,19 @@ class SparkyApp:
         """Create and configure the web application."""
         app = web.Application()
 
-        # Setup session middleware
+        # Setup session middleware with Secure and SameSite=None for cookies
         secret_key = config.jwt_secret.encode("utf-8")[:32]
         if len(secret_key) < 32:
             secret_key = (secret_key * (32 // len(secret_key) + 1))[:32]
 
-        setup_session(app, EncryptedCookieStorage(secret_key))
+        setup_session(
+            app,
+            EncryptedCookieStorage(
+                secret_key,
+                cookie_secure=True,         # Only send cookie over HTTPS
+                cookie_samesite="None"     # Allow cross-site cookies for OAuth
+            )
+        )
 
         # Health check route (for platforms like Railway)
         async def health(_request):
