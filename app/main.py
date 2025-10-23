@@ -80,17 +80,17 @@ class SparkyApp:
             return web.Response(text="OAuth not configured", status=503)
 
         try:
-            # With Supabase auth, the callback includes access_token and refresh_token
-            access_token = request.query.get("access_token")
-            refresh_token = request.query.get("refresh_token")
-            
-            if not access_token:
-                return web.Response(text="Authentication failed: No access token", status=400)
+            code = request.query.get("code")
+            if not code:
+                return web.Response(text="Authentication failed: Missing code", status=400)
 
-            # Get user info from Supabase
-            user = self.supabase_auth.get_user_from_session(access_token)
-            if not user:
-                return web.Response(text="Authentication failed: Invalid token", status=500)
+            session_data = self.supabase_auth.exchange_code_for_session(code)
+            if not session_data:
+                return web.Response(text="Authentication failed: Invalid session", status=500)
+
+            access_token = session_data["access_token"]
+            refresh_token = session_data.get("refresh_token")
+            user = session_data["user"]
 
             # Store tokens in session
             from aiohttp_session import get_session
@@ -134,7 +134,7 @@ class SparkyApp:
                     {
                         "authenticated": True,
                         "user": {
-                            "id": user["user_id"],
+                            "id": user["id"],
                             "email": user["email"],
                             "name": user["name"],
                         },
