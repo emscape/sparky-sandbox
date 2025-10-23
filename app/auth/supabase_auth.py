@@ -19,8 +19,12 @@ class SupabaseAuth:
         """Get Google OAuth URL using Supabase auth."""
         try:
             response = self.supabase.auth.sign_in_with_oauth(
-                provider="google",
-                options={"redirect_to": f"{self._get_base_url()}{redirect_to}"},
+                {
+                    "provider": "google",
+                    "options": {
+                        "redirect_to": f"{self._get_base_url()}{redirect_to}",
+                    },
+                }
             )
             return response.url
         except Exception as e:
