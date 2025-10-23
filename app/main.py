@@ -14,7 +14,7 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from openai import AsyncOpenAI
 
 from config import config
-from .auth.google import GoogleOAuthHandler
+from .auth.supabase_auth import SupabaseAuth
 from .chat.routes import ChatHandler
 from .memory.utils import MemoryManager
 
@@ -25,7 +25,7 @@ class SparkyApp:
     def __init__(self):
         """Initialize the application."""
         self.openai_client = AsyncOpenAI(api_key=config.openai_api_key)
-        self.oauth_handler = GoogleOAuthHandler()
+        self.supabase_auth = SupabaseAuth()
         self.chat_handler = ChatHandler(self.openai_client)
         self.memory_manager = MemoryManager()
 
@@ -44,23 +44,23 @@ class SparkyApp:
         return wrapper
 
     async def get_current_user(self, request) -> Optional[Dict]:
-        """Get current user from JWT token."""
+        """Get current user from Supabase session."""
         try:
             from aiohttp_session import get_session
 
             session = await get_session(request)
-            token = session.get("jwt_token")
+            access_token = session.get("supabase_access_token")
 
-            if not token:
+            if not access_token:
                 return None
 
-            payload = self.oauth_handler.verify_jwt_token(token)
-            return payload
+            user = self.supabase_auth.get_user_from_session(access_token)
+            return user
         except Exception:
             return None
 
     async def handle_login_redirect(self, request):
-        """Redirect to Google OAuth or show config error."""
+        """Redirect to Google OAuth via Supabase."""
         if not config.oauth_enabled:
             return web.Response(
                 text="OAuth not configured. Please set GOOGLE_CLIENT_ID and "
@@ -68,31 +68,36 @@ class SparkyApp:
                 status=503,
             )
 
-        auth_url = self.oauth_handler.get_auth_url()
-        return web.Response(status=302, headers={"Location": auth_url})
+        try:
+            auth_url = self.supabase_auth.get_google_auth_url()
+            return web.Response(status=302, headers={"Location": auth_url})
+        except Exception as e:
+            return web.Response(text=f"Auth error: {e}", status=500)
 
     async def handle_oauth_callback(self, request):
-        """Handle OAuth callback from Google."""
+        """Handle OAuth callback from Supabase auth."""
         if not config.oauth_enabled:
             return web.Response(text="OAuth not configured", status=503)
 
         try:
-            code = request.query.get("code")
-            if not code:
-                return web.Response(text="Authorization failed", status=400)
+            # With Supabase auth, the callback includes access_token and refresh_token
+            access_token = request.query.get("access_token")
+            refresh_token = request.query.get("refresh_token")
+            
+            if not access_token:
+                return web.Response(text="Authentication failed: No access token", status=400)
 
-            # Process OAuth callback
-            user = await self.oauth_handler.process_callback(code)
+            # Get user info from Supabase
+            user = self.supabase_auth.get_user_from_session(access_token)
             if not user:
-                return web.Response(text="Authentication failed", status=500)
+                return web.Response(text="Authentication failed: Invalid token", status=500)
 
-            # Create JWT token and set session
-            jwt_token = self.oauth_handler.create_jwt_token(user)
-
+            # Store tokens in session
             from aiohttp_session import get_session
 
             session = await get_session(request)
-            session["jwt_token"] = jwt_token
+            session["supabase_access_token"] = access_token
+            session["supabase_refresh_token"] = refresh_token
             session["user_id"] = user["id"]
 
             # Redirect to chat interface
@@ -108,6 +113,12 @@ class SparkyApp:
             from aiohttp_session import get_session
 
             session = await get_session(request)
+            access_token = session.get("supabase_access_token")
+            
+            # Sign out from Supabase
+            if access_token:
+                self.supabase_auth.sign_out(access_token)
+            
             session.clear()
             return web.json_response({"success": True})
         except Exception as e:

@@ -44,21 +44,35 @@ class GoogleOAuthHandler:
             'redirect_uri': self.redirect_uri
         }
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(token_url, data=data) as response:
-                if response.status == 200:
-                    return await response.json()
-                return None
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(token_url, data=data) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        error_text = await response.text()
+                        print(f"Token exchange failed: {response.status} - {error_text}")
+                        return None
+        except Exception as e:
+            print(f"Exception during token exchange: {e}")
+            return None
 
     async def get_user_info(self, access_token: str) -> Optional[Dict]:
         """Get user information from Google using access token."""
         user_info_url = f"https://www.googleapis.com/oauth2/v2/userinfo?access_token={access_token}"
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(user_info_url) as response:
-                if response.status == 200:
-                    return await response.json()
-                return None
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(user_info_url) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        error_text = await response.text()
+                        print(f"User info retrieval failed: {response.status} - {error_text}")
+                        return None
+        except Exception as e:
+            print(f"Exception during user info retrieval: {e}")
+            return None
 
     async def create_or_update_user(self, user_info: Dict) -> Optional[Dict]:
         """Create or update user in database."""
@@ -121,16 +135,32 @@ class GoogleOAuthHandler:
 
     async def process_callback(self, code: str) -> Optional[Dict]:
         """Process the OAuth callback and return user data."""
-        # Exchange code for token
-        token_data = await self.exchange_code_for_token(code)
-        if not token_data:
-            return None
+        try:
+            print(f"Processing OAuth callback with code: {code[:10]}...")
+            
+            # Exchange code for token
+            token_data = await self.exchange_code_for_token(code)
+            if not token_data:
+                print("Token exchange failed")
+                return None
 
-        # Get user info
-        user_info = await self.get_user_info(token_data['access_token'])
-        if not user_info:
-            return None
+            print("Token exchange successful")
 
-        # Create or update user
-        user = await self.create_or_update_user(user_info)
-        return user
+            # Get user info
+            user_info = await self.get_user_info(token_data['access_token'])
+            if not user_info:
+                print("User info retrieval failed")
+                return None
+
+            print(f"Retrieved user info for: {user_info.get('email')}")
+
+            # Create or update user
+            user = await self.create_or_update_user(user_info)
+            if user:
+                print(f"User created/updated successfully: {user.get('email')}")
+            else:
+                print("User creation/update failed")
+            return user
+        except Exception as e:
+            print(f"Exception in process_callback: {e}")
+            return None
