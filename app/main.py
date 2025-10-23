@@ -14,9 +14,9 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from openai import AsyncOpenAI
 
 from config import config
-from app.auth.supabase_auth import SupabaseAuth
-from app.chat.routes import ChatHandler
-from app.memory.utils import MemoryManager
+from .auth.supabase_auth import SupabaseAuth
+from .chat.routes import ChatHandler
+from .memory.utils import MemoryManager
 
 
 class SparkyApp:
