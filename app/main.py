@@ -14,9 +14,9 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from openai import AsyncOpenAI
 
 from config import config
-from .auth.supabase_auth import SupabaseAuth
-from .chat.routes import ChatHandler
-from .memory.utils import MemoryManager
+from app.auth.supabase_auth import SupabaseAuth
+from app.chat.routes import ChatHandler
+from app.memory.utils import MemoryManager
 
 
 class SparkyApp:
@@ -107,6 +107,10 @@ class SparkyApp:
             session["user_id"] = user["id"]
             print(f"[DEBUG] Session after storing tokens: {dict(session)}")
 
+            # Force session to be saved by marking it as changed
+            session.changed()
+            print(f"[DEBUG] Session marked as changed for persistence")
+
             # Redirect to chat interface
             return web.Response(status=302, headers={"Location": "/chat"})
 
@@ -119,6 +123,24 @@ class SparkyApp:
         session = await get_session(request)
         print(f"[DEBUG] /api/session-debug session: {dict(session)}")
         return web.json_response({"session": dict(session)})
+
+    async def handle_session_test(self, request):
+        """Test endpoint to verify session persistence."""
+        from aiohttp_session import get_session
+        session = await get_session(request)
+
+        # Get or initialize test counter
+        counter = session.get("test_counter", 0)
+        counter += 1
+        session["test_counter"] = counter
+        session.changed()
+
+        print(f"[DEBUG] Session test - Counter: {counter}, Session: {dict(session)}")
+        return web.json_response({
+            "counter": counter,
+            "session_id": session.get("session_id", "none"),
+            "cookies_received": dict(request.cookies)
+        })
 
     async def handle_logout(self, request):
         """Handle logout request."""
@@ -174,21 +196,43 @@ class SparkyApp:
         """Create and configure the web application."""
         app = web.Application()
 
-        # Setup session middleware with Secure and SameSite=None for cookies
+        # Setup session middleware with proper cookie attributes for HTTPS
         secret_key = config.jwt_secret.encode("utf-8")[:32]
         if len(secret_key) < 32:
             secret_key = (secret_key * (32 // len(secret_key) + 1))[:32]
 
-        setup_session(
-            app,
-            EncryptedCookieStorage(
-                secret_key,
-                cookie_params={
-                    "secure": True,        # Only send cookie over HTTPS
-                    "samesite": "None"   # Allow cross-site cookies for OAuth
-                }
-            )
+        # Determine if we're in production (Railway) or local development
+        import os
+        is_production = bool(os.getenv("RAILWAY_ENVIRONMENT"))
+
+        # Allow override of cookie security settings via environment
+        cookie_secure = os.getenv("COOKIE_SECURE", str(is_production)).lower() in ("true", "1", "yes")
+        cookie_samesite = os.getenv("COOKIE_SAMESITE", "Lax" if is_production else "None")
+
+        # Configure cookie storage with appropriate security settings
+        cookie_storage = EncryptedCookieStorage(
+            secret_key,
+            cookie_name="AIOHTTP_SESSION",
+            secure=cookie_secure,  # Secure cookies for HTTPS
+            httponly=True,  # Prevent XSS attacks
+            samesite=cookie_samesite if cookie_samesite != "None" else None,
+            max_age=86400  # 24 hours
         )
+
+        print(f"[DEBUG] Session cookie config - Production: {is_production}, Secure: {cookie_secure}, SameSite: {cookie_samesite}")
+
+        setup_session(app, cookie_storage)
+
+        # Add middleware to debug cookie issues
+        @web.middleware
+        async def debug_cookie_middleware(request, handler):
+            print(f"[DEBUG] Request cookies: {dict(request.cookies)}")
+            response = await handler(request)
+            if hasattr(response, 'cookies'):
+                print(f"[DEBUG] Response cookies: {dict(response.cookies)}")
+            return response
+
+        app.middlewares.append(debug_cookie_middleware)
 
         # Health check route (for platforms like Railway)
         async def health(_request):
@@ -200,8 +244,9 @@ class SparkyApp:
         app.router.add_get("/chat", self.serve_chat)
         app.router.add_get("/health", health)
 
-        # Debug route for session inspection
+        # Debug routes for session inspection
         app.router.add_get("/api/session-debug", self.handle_session_debug)
+        app.router.add_get("/api/session-test", self.handle_session_test)
 
         # Authentication routes (no auth required)
         app.router.add_get("/api/auth/google", self.handle_login_redirect)
