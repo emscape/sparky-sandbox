@@ -183,8 +183,10 @@ class SparkyApp:
             app,
             EncryptedCookieStorage(
                 secret_key,
-                cookie_secure=True,         # Only send cookie over HTTPS
-                cookie_samesite="None"     # Allow cross-site cookies for OAuth
+                cookie_params={
+                    "secure": True,        # Only send cookie over HTTPS
+                    "samesite": "None"   # Allow cross-site cookies for OAuth
+                }
             )
         )
 
