@@ -82,6 +82,10 @@ class SparkyApp:
             return web.Response(text="OAuth not configured", status=503)
 
         try:
+            print(f"[DEBUG] OAuth callback - Request headers: {dict(request.headers)}")
+            print(f"[DEBUG] OAuth callback - Request cookies: {dict(request.cookies)}")
+            print(f"[DEBUG] OAuth callback - Request URL: {request.url}")
+
             code = request.query.get("code")
             print(f"[DEBUG] OAuth callback code: {code}")
             if not code:
@@ -101,7 +105,10 @@ class SparkyApp:
             # Store tokens in session
             from aiohttp_session import get_session
 
+            print(f"[DEBUG] Getting session from request...")
             session = await get_session(request)
+            print(f"[DEBUG] Session before storing tokens: {dict(session)}")
+
             session["supabase_access_token"] = access_token
             session["supabase_refresh_token"] = refresh_token
             session["user_id"] = user["id"]
@@ -111,11 +118,16 @@ class SparkyApp:
             session.changed()
             print(f"[DEBUG] Session marked as changed for persistence")
 
-            # Redirect to chat interface
-            return web.Response(status=302, headers={"Location": "/chat"})
+            # Create response and check if cookies are being set
+            response = web.Response(status=302, headers={"Location": "/chat"})
+            print(f"[DEBUG] Response cookies: {dict(response.cookies) if hasattr(response, 'cookies') else 'No cookies attribute'}")
+
+            return response
 
         except Exception as e:
             print(f"[DEBUG] OAuth callback error: {e}")
+            import traceback
+            traceback.print_exc()
             return web.Response(text="Authentication failed", status=500)
     async def handle_session_debug(self, request):
         """Debug endpoint to inspect session state after login."""
@@ -209,30 +221,55 @@ class SparkyApp:
         cookie_secure = os.getenv("COOKIE_SECURE", str(is_production)).lower() in ("true", "1", "yes")
         cookie_samesite = os.getenv("COOKIE_SAMESITE", "Lax" if is_production else "None")
 
-        # Configure cookie storage with appropriate security settings
-        cookie_storage = EncryptedCookieStorage(
-            secret_key,
-            cookie_name="AIOHTTP_SESSION",
-            secure=cookie_secure,  # Secure cookies for HTTPS
-            httponly=True,  # Prevent XSS attacks
-            samesite=cookie_samesite if cookie_samesite != "None" else None,
-            max_age=86400  # 24 hours
-        )
+        # For HTTPS environments, we need to ensure proper cookie attributes
+        # Try different approaches based on aiohttp version compatibility
+        try:
+            # Modern aiohttp approach with explicit cookie attributes
+            cookie_storage = EncryptedCookieStorage(
+                secret_key,
+                cookie_name="AIOHTTP_SESSION",
+                secure=cookie_secure,
+                httponly=True,
+                samesite=cookie_samesite if cookie_samesite != "None" else None,
+                max_age=86400
+            )
+            print(f"[DEBUG] Using modern cookie storage with secure={cookie_secure}, samesite={cookie_samesite}")
+        except TypeError:
+            # Fallback for older aiohttp versions
+            cookie_storage = EncryptedCookieStorage(
+                secret_key,
+                cookie_name="AIOHTTP_SESSION",
+                max_age=86400
+            )
+            print(f"[DEBUG] Using fallback cookie storage (older aiohttp version)")
 
         print(f"[DEBUG] Session cookie config - Production: {is_production}, Secure: {cookie_secure}, SameSite: {cookie_samesite}")
 
         setup_session(app, cookie_storage)
 
-        # Add middleware to debug cookie issues
+        # Add middleware to debug cookie issues and fix cookie attributes
         @web.middleware
-        async def debug_cookie_middleware(request, handler):
+        async def cookie_fix_middleware(request, handler):
             print(f"[DEBUG] Request cookies: {dict(request.cookies)}")
             response = await handler(request)
+
+            # Debug response cookies
             if hasattr(response, 'cookies'):
                 print(f"[DEBUG] Response cookies: {dict(response.cookies)}")
+
+            # Fix session cookie attributes for HTTPS if needed
+            if is_production and hasattr(response, 'cookies'):
+                for cookie_name, cookie_obj in response.cookies.items():
+                    if cookie_name == "AIOHTTP_SESSION":
+                        print(f"[DEBUG] Fixing cookie attributes for {cookie_name}")
+                        cookie_obj['secure'] = True
+                        cookie_obj['httponly'] = True
+                        cookie_obj['samesite'] = 'Lax'
+                        print(f"[DEBUG] Cookie {cookie_name} attributes set: secure=True, httponly=True, samesite=Lax")
+
             return response
 
-        app.middlewares.append(debug_cookie_middleware)
+        app.middlewares.append(cookie_fix_middleware)
 
         # Health check route (for platforms like Railway)
         async def health(_request):
