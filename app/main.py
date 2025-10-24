@@ -258,10 +258,10 @@ class SparkyApp:
         import os
         is_production = bool(os.getenv("RAILWAY_ENVIRONMENT"))
 
-        # Allow override of cookie security settings via environment
-        cookie_secure = os.getenv("COOKIE_SECURE", str(is_production)).lower() in ("true", "1", "yes")
-        # Try None for debugging cross-site issues, fallback to Lax
-        cookie_samesite = os.getenv("COOKIE_SAMESITE", "None" if is_production else "None")
+        # Railway forwards HTTPS requests as HTTP internally, so we need to detect this
+        # In production, always use secure cookies since Railway handles HTTPS termination
+        cookie_secure = is_production  # Always secure in production regardless of internal scheme
+        cookie_samesite = os.getenv("COOKIE_SAMESITE", "Lax" if is_production else "None")
 
         # For HTTPS environments, we need to ensure proper cookie attributes
         # Try different approaches based on aiohttp version compatibility
@@ -289,13 +289,25 @@ class SparkyApp:
 
         setup_session(app, cookie_storage)
 
-        # Add middleware to debug cookie issues and fix cookie attributes
+        # Add middleware to handle Railway's HTTPS forwarding and debug cookies
         @web.middleware
-        async def cookie_fix_middleware(request, handler):
+        async def railway_https_middleware(request, handler):
+            # Railway forwards HTTPS as HTTP, check forwarded headers
+            forwarded_proto = request.headers.get('X-Forwarded-Proto', '')
+            forwarded_for = request.headers.get('X-Forwarded-For', '')
+
             print(f"[DEBUG] Request URL: {request.url}")
             print(f"[DEBUG] Request host: {request.host}")
             print(f"[DEBUG] Request scheme: {request.scheme}")
+            print(f"[DEBUG] X-Forwarded-Proto: {forwarded_proto}")
+            print(f"[DEBUG] X-Forwarded-For: {forwarded_for}")
             print(f"[DEBUG] Request cookies: {dict(request.cookies)}")
+
+            # Override scheme for Railway HTTPS detection
+            if is_production and forwarded_proto == 'https':
+                # Monkey patch the request scheme for aiohttp-session
+                request._scheme = 'https'
+                print(f"[DEBUG] Overrode request scheme to HTTPS for Railway")
 
             response = await handler(request)
 
@@ -310,19 +322,9 @@ class SparkyApp:
                 set_cookie_headers = response.headers.getall('Set-Cookie', [])
                 print(f"[DEBUG] Set-Cookie headers: {set_cookie_headers}")
 
-            # Fix session cookie attributes for HTTPS if needed
-            if is_production and hasattr(response, 'cookies'):
-                for cookie_name, cookie_obj in response.cookies.items():
-                    if cookie_name == "AIOHTTP_SESSION":
-                        print(f"[DEBUG] Fixing cookie attributes for {cookie_name}")
-                        cookie_obj['secure'] = True
-                        cookie_obj['httponly'] = True
-                        cookie_obj['samesite'] = 'Lax'
-                        print(f"[DEBUG] Cookie {cookie_name} attributes after fix: {cookie_obj}")
-
             return response
 
-        app.middlewares.append(cookie_fix_middleware)
+        app.middlewares.append(railway_https_middleware)
 
         # Health check route (for platforms like Railway)
         async def health(_request):
