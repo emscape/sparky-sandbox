@@ -198,10 +198,51 @@ class SparkyApp:
         return web.FileResponse("templates/login.html")
 
     async def serve_chat(self, request):
-        """Serve chat page."""
+        """Serve chat page, handling Supabase OAuth redirect."""
+        from aiohttp_session import get_session
+
+        # Check if this is a Supabase OAuth redirect with tokens
+        access_token = request.query.get('access_token')
+        refresh_token = request.query.get('refresh_token')
+
+        if access_token:
+            print(f"[DEBUG] Chat route - Processing Supabase OAuth redirect")
+            print(f"[DEBUG] Chat route - Access token present: {bool(access_token)}")
+            print(f"[DEBUG] Chat route - Refresh token present: {bool(refresh_token)}")
+
+            try:
+                # Get user info from Supabase
+                user_info = self.supabase_auth.get_user_from_session(access_token)
+                if user_info:
+                    print(f"[DEBUG] Chat route - User info: {user_info}")
+
+                    # Create aiohttp session
+                    session = await get_session(request)
+                    session["supabase_access_token"] = access_token
+                    if refresh_token:
+                        session["supabase_refresh_token"] = refresh_token
+                    session["user_id"] = user_info["id"]
+                    session["user_email"] = user_info["email"]
+                    session.changed()
+
+                    print(f"[DEBUG] Chat route - Session created: {dict(session)}")
+
+                    # Redirect to clean URL without tokens
+                    return web.Response(status=302, headers={"Location": "/chat"})
+                else:
+                    print(f"[DEBUG] Chat route - Failed to get user info from token")
+            except Exception as e:
+                print(f"[DEBUG] Chat route - Error processing OAuth redirect: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Normal chat page serving - check authentication
         user = await self.get_current_user(request)
         if not user:
+            print(f"[DEBUG] Chat route - No authenticated user, redirecting to login")
             return web.Response(status=302, headers={"Location": "/"})
+
+        print(f"[DEBUG] Chat route - Serving chat page for user: {user.get('email', 'unknown')}")
         return web.FileResponse("templates/chat.html")
 
     async def create_app(self):
