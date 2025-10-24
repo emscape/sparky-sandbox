@@ -1,0 +1,16 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[environments.production]
+variables = { 
+  RAILWAY_ENVIRONMENT = "production",
+  COOKIE_SECURE = "false",
+  COOKIE_SAMESITE = "Lax",
+  TRUST_PROXY = "true"
+}

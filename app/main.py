@@ -264,6 +264,8 @@ class SparkyApp:
 
     async def create_app(self):
         """Create and configure the web application."""
+        # Create the aiohttp application
+        # Note: trust_proxy is not available in aiohttp, we'll handle proxy headers manually
         app = web.Application()
 
         # Setup session middleware with proper cookie attributes for HTTPS
@@ -280,15 +282,29 @@ class SparkyApp:
         cookie_secure = False  # Disable secure for Railway HTTPS forwarding
         cookie_samesite = os.getenv("COOKIE_SAMESITE", "Lax" if is_production else "None")
 
-        # Simplified cookie storage for Railway debugging
-        # Start with minimal configuration to ensure cookies work
+        # Railway-specific cookie configuration
+        # Try setting domain explicitly for Railway
         try:
-            cookie_storage = EncryptedCookieStorage(
-                secret_key,
-                cookie_name="AIOHTTP_SESSION",
-                max_age=86400
-            )
-            print(f"[DEBUG] Using simplified cookie storage for Railway debugging")
+            if is_production:
+                # For Railway production, set domain explicitly
+                cookie_storage = EncryptedCookieStorage(
+                    secret_key,
+                    cookie_name="AIOHTTP_SESSION",
+                    domain=".emily-cameron.pro",  # Set domain explicitly
+                    secure=False,  # Railway handles HTTPS termination
+                    httponly=True,
+                    samesite="Lax",
+                    max_age=86400
+                )
+                print(f"[DEBUG] Using Railway production cookie storage with domain")
+            else:
+                # Local development
+                cookie_storage = EncryptedCookieStorage(
+                    secret_key,
+                    cookie_name="AIOHTTP_SESSION",
+                    max_age=86400
+                )
+                print(f"[DEBUG] Using local development cookie storage")
         except Exception as e:
             print(f"[DEBUG] Error creating cookie storage: {e}")
             # Ultra-simple fallback
