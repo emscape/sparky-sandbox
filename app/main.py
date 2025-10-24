@@ -138,21 +138,36 @@ class SparkyApp:
 
     async def handle_session_test(self, request):
         """Test endpoint to verify session persistence."""
-        from aiohttp_session import get_session
-        session = await get_session(request)
+        from aiohttp_session import get_session, new_session
+
+        try:
+            session = await get_session(request)
+            print(f"[DEBUG] Session test - Got existing session: {dict(session)}")
+        except Exception as e:
+            print(f"[DEBUG] Session test - Error getting session: {e}, creating new session")
+            session = await new_session(request)
+            print(f"[DEBUG] Session test - Created new session: {dict(session)}")
 
         # Get or initialize test counter
         counter = session.get("test_counter", 0)
         counter += 1
         session["test_counter"] = counter
-        session.changed()
 
+        # Force session to be saved
+        session.changed()
         print(f"[DEBUG] Session test - Counter: {counter}, Session: {dict(session)}")
-        return web.json_response({
+        print(f"[DEBUG] Session test - Session identity: {session.identity}")
+        print(f"[DEBUG] Session test - Session new: {session.new}")
+
+        response = web.json_response({
             "counter": counter,
-            "session_id": session.get("session_id", "none"),
+            "session_id": getattr(session, 'identity', 'none'),
+            "session_new": getattr(session, 'new', 'unknown'),
             "cookies_received": dict(request.cookies)
         })
+
+        print(f"[DEBUG] Session test - Response created")
+        return response
 
     async def handle_logout(self, request):
         """Handle logout request."""
@@ -263,27 +278,20 @@ class SparkyApp:
         cookie_secure = False  # Disable secure for Railway HTTPS forwarding
         cookie_samesite = os.getenv("COOKIE_SAMESITE", "Lax" if is_production else "None")
 
-        # For HTTPS environments, we need to ensure proper cookie attributes
-        # Try different approaches based on aiohttp version compatibility
+        # Simplified cookie storage for Railway debugging
+        # Start with minimal configuration to ensure cookies work
         try:
-            # Modern aiohttp approach with explicit cookie attributes
-            cookie_storage = EncryptedCookieStorage(
-                secret_key,
-                cookie_name="AIOHTTP_SESSION",
-                secure=cookie_secure,
-                httponly=True,
-                samesite=cookie_samesite if cookie_samesite != "None" else None,
-                max_age=86400
-            )
-            print(f"[DEBUG] Using modern cookie storage with secure={cookie_secure}, samesite={cookie_samesite}")
-        except TypeError:
-            # Fallback for older aiohttp versions
             cookie_storage = EncryptedCookieStorage(
                 secret_key,
                 cookie_name="AIOHTTP_SESSION",
                 max_age=86400
             )
-            print(f"[DEBUG] Using fallback cookie storage (older aiohttp version)")
+            print(f"[DEBUG] Using simplified cookie storage for Railway debugging")
+        except Exception as e:
+            print(f"[DEBUG] Error creating cookie storage: {e}")
+            # Ultra-simple fallback
+            cookie_storage = EncryptedCookieStorage(secret_key)
+            print(f"[DEBUG] Using ultra-simple cookie storage fallback")
 
         print(f"[DEBUG] Session cookie config - Production: {is_production}, Secure: {cookie_secure}, SameSite: {cookie_samesite}")
 
