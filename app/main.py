@@ -260,7 +260,8 @@ class SparkyApp:
 
         # Allow override of cookie security settings via environment
         cookie_secure = os.getenv("COOKIE_SECURE", str(is_production)).lower() in ("true", "1", "yes")
-        cookie_samesite = os.getenv("COOKIE_SAMESITE", "Lax" if is_production else "None")
+        # Try None for debugging cross-site issues, fallback to Lax
+        cookie_samesite = os.getenv("COOKIE_SAMESITE", "None" if is_production else "None")
 
         # For HTTPS environments, we need to ensure proper cookie attributes
         # Try different approaches based on aiohttp version compatibility
@@ -291,12 +292,23 @@ class SparkyApp:
         # Add middleware to debug cookie issues and fix cookie attributes
         @web.middleware
         async def cookie_fix_middleware(request, handler):
+            print(f"[DEBUG] Request URL: {request.url}")
+            print(f"[DEBUG] Request host: {request.host}")
+            print(f"[DEBUG] Request scheme: {request.scheme}")
             print(f"[DEBUG] Request cookies: {dict(request.cookies)}")
+
             response = await handler(request)
 
-            # Debug response cookies
+            # Debug response cookies and headers
             if hasattr(response, 'cookies'):
                 print(f"[DEBUG] Response cookies: {dict(response.cookies)}")
+                for cookie_name, cookie_obj in response.cookies.items():
+                    print(f"[DEBUG] Cookie {cookie_name} details: {cookie_obj}")
+
+            # Check Set-Cookie headers
+            if hasattr(response, 'headers'):
+                set_cookie_headers = response.headers.getall('Set-Cookie', [])
+                print(f"[DEBUG] Set-Cookie headers: {set_cookie_headers}")
 
             # Fix session cookie attributes for HTTPS if needed
             if is_production and hasattr(response, 'cookies'):
@@ -306,7 +318,7 @@ class SparkyApp:
                         cookie_obj['secure'] = True
                         cookie_obj['httponly'] = True
                         cookie_obj['samesite'] = 'Lax'
-                        print(f"[DEBUG] Cookie {cookie_name} attributes set: secure=True, httponly=True, samesite=Lax")
+                        print(f"[DEBUG] Cookie {cookie_name} attributes after fix: {cookie_obj}")
 
             return response
 
