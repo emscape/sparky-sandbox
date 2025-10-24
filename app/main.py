@@ -258,9 +258,9 @@ class SparkyApp:
         import os
         is_production = bool(os.getenv("RAILWAY_ENVIRONMENT"))
 
-        # Railway forwards HTTPS requests as HTTP internally, so we need to detect this
-        # In production, always use secure cookies since Railway handles HTTPS termination
-        cookie_secure = is_production  # Always secure in production regardless of internal scheme
+        # Railway forwards HTTPS requests as HTTP internally
+        # For Railway, we'll disable secure cookies and handle HTTPS detection differently
+        cookie_secure = False  # Disable secure for Railway HTTPS forwarding
         cookie_samesite = os.getenv("COOKIE_SAMESITE", "Lax" if is_production else "None")
 
         # For HTTPS environments, we need to ensure proper cookie attributes
