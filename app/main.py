@@ -166,7 +166,9 @@ class SparkyApp:
             "cookies_received": dict(request.cookies)
         })
 
-        print(f"[DEBUG] Session test - Response created")
+        # Manually set a test cookie to verify cookie setting works
+        response.set_cookie('TEST_COOKIE', f'test_value_{counter}', max_age=3600)
+        print(f"[DEBUG] Session test - Response created with manual test cookie")
         return response
 
     async def handle_logout(self, request):
