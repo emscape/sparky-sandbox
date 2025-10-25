@@ -9,14 +9,65 @@ from typing import Dict, Optional
 from pathlib import Path
 
 from aiohttp import web
-from aiohttp_session import setup as setup_session
+from aiohttp_session import setup as setup_session, get_session, new_session
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from openai import AsyncOpenAI
+import uuid
+import time
 
 from config import config
 from .auth.supabase_auth import SupabaseAuth
 from .chat.routes import ChatHandler
 from .memory.utils import MemoryManager
+
+
+class SimpleSessionStorage:
+    """Simple in-memory session storage for Railway compatibility."""
+
+    def __init__(self):
+        self.sessions = {}
+        self.session_timeout = 86400  # 24 hours
+
+    def create_session(self):
+        """Create a new session with a unique ID."""
+        session_id = str(uuid.uuid4())
+        session_data = {
+            'id': session_id,
+            'data': {},
+            'created': time.time(),
+            'last_accessed': time.time()
+        }
+        self.sessions[session_id] = session_data
+        return session_id, session_data
+
+    def get_session(self, session_id):
+        """Get session data by ID."""
+        if not session_id or session_id not in self.sessions:
+            return None
+
+        session = self.sessions[session_id]
+        # Check if session has expired
+        if time.time() - session['last_accessed'] > self.session_timeout:
+            del self.sessions[session_id]
+            return None
+
+        session['last_accessed'] = time.time()
+        return session
+
+    def update_session(self, session_id, data):
+        """Update session data."""
+        if session_id in self.sessions:
+            self.sessions[session_id]['data'].update(data)
+            self.sessions[session_id]['last_accessed'] = time.time()
+            return True
+        return False
+
+    def delete_session(self, session_id):
+        """Delete a session."""
+        if session_id in self.sessions:
+            del self.sessions[session_id]
+            return True
+        return False
 
 
 class SparkyApp:
@@ -28,6 +79,7 @@ class SparkyApp:
         self.supabase_auth = SupabaseAuth()
         self.chat_handler = ChatHandler(self.openai_client)
         self.memory_manager = MemoryManager()
+        self.session_storage = SimpleSessionStorage()
 
     def require_auth(self, handler):
         """Decorator to require authentication for routes."""
@@ -137,38 +189,56 @@ class SparkyApp:
         return web.json_response({"session": dict(session)})
 
     async def handle_session_test(self, request):
-        """Test endpoint to verify session persistence."""
-        from aiohttp_session import get_session, new_session
+        """Test endpoint to verify session persistence using simple session storage."""
+        # Get session ID from cookie
+        session_id = request.cookies.get('SPARKY_SESSION_ID')
 
-        try:
-            session = await get_session(request)
-            print(f"[DEBUG] Session test - Got existing session: {dict(session)}")
-        except Exception as e:
-            print(f"[DEBUG] Session test - Error getting session: {e}, creating new session")
-            session = await new_session(request)
-            print(f"[DEBUG] Session test - Created new session: {dict(session)}")
+        # Get or create session
+        if session_id:
+            session_data = self.session_storage.get_session(session_id)
+            if session_data:
+                print(f"[DEBUG] Session test - Got existing session: {session_id}")
+                session_new = False
+            else:
+                print(f"[DEBUG] Session test - Session expired, creating new session")
+                session_id, session_data = self.session_storage.create_session()
+                session_new = True
+        else:
+            print(f"[DEBUG] Session test - No session cookie, creating new session")
+            session_id, session_data = self.session_storage.create_session()
+            session_new = True
 
         # Get or initialize test counter
-        counter = session.get("test_counter", 0)
+        counter = session_data['data'].get("test_counter", 0)
         counter += 1
-        session["test_counter"] = counter
 
-        # Force session to be saved
-        session.changed()
-        print(f"[DEBUG] Session test - Counter: {counter}, Session: {dict(session)}")
-        print(f"[DEBUG] Session test - Session identity: {session.identity}")
-        print(f"[DEBUG] Session test - Session new: {session.new}")
+        # Update session data
+        self.session_storage.update_session(session_id, {"test_counter": counter})
+
+        print(f"[DEBUG] Session test - Counter: {counter}, Session ID: {session_id}")
+        print(f"[DEBUG] Session test - Session new: {session_new}")
+        print(f"[DEBUG] Session test - Cookies received: {dict(request.cookies)}")
 
         response = web.json_response({
             "counter": counter,
-            "session_id": getattr(session, 'identity', 'none'),
-            "session_new": getattr(session, 'new', 'unknown'),
+            "session_id": session_id,
+            "session_new": session_new,
             "cookies_received": dict(request.cookies)
         })
 
-        # Manually set a test cookie to verify cookie setting works
+        # Set session cookie
+        response.set_cookie(
+            'SPARKY_SESSION_ID',
+            session_id,
+            max_age=86400,
+            httponly=True,
+            secure=False,  # Railway handles HTTPS termination
+            samesite='Lax'
+        )
+
+        # Also set a test cookie to verify cookie setting works
         response.set_cookie('TEST_COOKIE', f'test_value_{counter}', max_age=3600)
-        print(f"[DEBUG] Session test - Response created with manual test cookie")
+        print(f"[DEBUG] Session test - Response created with session and test cookies")
         return response
 
     async def handle_logout(self, request):
